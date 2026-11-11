@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gondolattérkép</title>
+  <style>
+    html, body, .markmap { margin: 0; width: 100%; height: 100%; }
+    body { font-family: system-ui, sans-serif; color: #17213a; }
+    .markmap-node foreignObject, .markmap-node text { cursor: pointer; }
+    .sidebar {
+      position: fixed; z-index: 10; top: 0; right: 0;
+      width: min(390px, 100vw); height: 100dvh; box-sizing: border-box;
+      overflow-y: auto; padding: 28px; background: #fff;
+      box-shadow: -8px 0 32px #15263e33; border-left: 1px solid #dfe6f2;
+      animation: slide-in .18s ease-out;
+    }
+    .sidebar[hidden] { display: none; }
+    .sidebar-header { display: flex; justify-content: space-between; gap: 16px; }
+    .sidebar h2 { margin: 8px 0 16px; font-size: 1.35rem; line-height: 1.3; overflow-wrap: anywhere; }
+    .sidebar p { white-space: pre-wrap; line-height: 1.7; overflow-wrap: anywhere; }
+    .eyebrow { color: #4465a2; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .hierarchy { color: #607087; font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; }
+    .close { border: 0; border-radius: 8px; background: #eef2f8; color: #17213a; font-size: 1.3rem; cursor: pointer; width: 38px; height: 38px; flex: none; }
+    .close:hover, .close:focus-visible { background: #dae4f4; }
+    @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    @media (prefers-reduced-motion: reduce) { .sidebar { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="markmap"><pre>{{MARKDOWN}}</pre></div>
+  <aside class="sidebar" id="sidebar" aria-labelledby="node-title" hidden>
+    <div class="sidebar-header">
+      <div>
+        <div class="eyebrow">Összefoglaló</div>
+        <h2 id="node-title"></h2>
+      </div>
+      <button class="close" type="button" aria-label="Oldalsáv bezárása">×</button>
+    </div>
+    <div class="hierarchy" id="node-path"></div>
+    <p id="node-summary"></p>
+  </aside>
+  <script type="application/json" id="node-summaries">{{SUMMARIES}}</script>
+  <script>
+    (() => {
+      const map = document.querySelector(".markmap");
+      const panel = document.querySelector("#sidebar");
+      const title = document.querySelector("#node-title");
+      const path = document.querySelector("#node-path");
+      const summary = document.querySelector("#node-summary");
+      const summaries = JSON.parse(document.querySelector("#node-summaries").textContent);
+      let selected = null;
+
+      function label(node) {
+        return (node.querySelector("foreignObject") || node.querySelector("text"))?.textContent.trim() || "";
+      }
+      function open(node) {
+        const parts = node.dataset.path.split(".");
+        const labels = parts.map((_, index) => {
+          const ancestor = map.querySelector(`.markmap-node[data-path="${parts.slice(0, index + 1).join(".")}"]`);
+          return ancestor ? label(ancestor) : "";
+        }).filter(Boolean);
+        const name = label(node);
+        if (!name) return;
+        selected = node.querySelector("foreignObject, text");
+        title.textContent = name;
+        path.textContent = labels.join(" › ");
+        summary.textContent = Object.hasOwn(summaries, name)
+          ? summaries[name] : "Ehhez a csomóponthoz nincs megadott összefoglaló.";
+        panel.hidden = false;
+      }
+      function close(restoreFocus) {
+        panel.hidden = true;
+        if (restoreFocus && selected && selected.isConnected) selected.focus();
+      }
+      function prepareLabels() {
+        map.querySelectorAll(".markmap-node foreignObject, .markmap-node text").forEach(element => {
+          element.setAttribute("tabindex", "0");
+          element.setAttribute("role", "button");
+          element.setAttribute("aria-label", `Összefoglaló: ${element.textContent.trim()}`);
+        });
+      }
+      new MutationObserver(prepareLabels).observe(map, { childList: true, subtree: true });
+      map.addEventListener("click", event => {
+        const text = event.target.closest(".markmap-node foreignObject, .markmap-node text");
+        if (!text) return;
+        event.stopPropagation();
+        open(text.closest(".markmap-node"));
+      });
+      map.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const text = event.target.closest(".markmap-node foreignObject, .markmap-node text");
+        if (!text) return;
+        event.preventDefault();
+        event.stopPropagation();
+        open(text.closest(".markmap-node"));
+      });
+      document.querySelector(".close").addEventListener("click", () => close(true));
+      document.addEventListener("click", event => {
+        if (!panel.hidden && !panel.contains(event.target)) close(false);
+      });
+      document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !panel.hidden) close(true);
+      });
+    })();
+  </script>
+  <script src="{{MARKMAP_URL}}"></script>
+</body>
+</html>

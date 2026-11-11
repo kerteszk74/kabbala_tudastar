@@ -1,0 +1,24 @@
+# This workspace contains unrelated projects and large private media.
+# Only the explicitly listed publication files are intended for this repository.
+/*
+!/README.md
+!/.gitignore
+!/docs/
+/docs/*
+!/docs/index.html
+!/docs/zohar_summaries.json
+!/scripts/
+/scripts/*
+!/scripts/build_zohar_publication.py
+!/scripts/generate_mindmap.py
+!/scripts/mindmap_viewer.html
+!/input/
+/input/*
+!/input/zohar_summaries.json
+!/output/
+/output/*
+!/output/mindmap_zohar_teszt.md
+!/tests/
+/tests/*
+!/tests/test_zohar_publication.py
+!/tests/test_mindmap_generator.py
