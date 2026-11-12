@@ -1,298 +1,470 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="hu">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zohár Gondolattérkép – Kezdőbarát Tudástár</title>
-  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-  <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.17.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.17.0"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Zohár – barangolás a tanítások között</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.17.0/dist/browser/index.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background: #0f172a;
-      color: #f8fafc;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+    :root {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #233238;
+      background: #f4f3ee;
+      --teal: #226e6c;
+      --line: #dce5df;
     }
-    header {
-      background: #1e293b;
-      padding: 10px 18px;
-      border-bottom: 1px solid #334155;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, .node-label:focus-visible {
+      outline: 3px solid #d5983c; outline-offset: 3px;
     }
-    .title-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    header h1 { font-size: 1.05rem; color: #38bdf8; font-weight: 600; }
-    .badge {
-      background: #0f172a;
-      border: 1px solid #38bdf8;
-      color: #38bdf8;
-      font-size: 0.78rem;
-      padding: 2px 8px;
-      border-radius: 999px;
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .topbar {
+      background: #fff; border-bottom: 1px solid var(--line);
+      padding: 14px clamp(16px, 3vw, 36px); position: relative; z-index: 3;
     }
-    .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    #fit-btn {
-      background: #0f172a;
-      border: 1px solid #475569;
-      color: #e2e8f0;
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 0.82rem;
-      cursor: pointer;
+    .heading-row, .toolbar, .filters, .map-controls {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
     }
-    #fit-btn:hover { border-color: #38bdf8; color: #38bdf8; }
-    #search-input {
-      background: #0f172a;
-      border: 1px solid #475569;
-      color: #f8fafc;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      width: 240px;
+    .heading-row { justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon {
+      display: grid; place-items: center; width: 42px; height: 42px;
+      border-radius: 13px; background: #e7f2eb; color: var(--teal); font-size: 1.4rem;
     }
-    #search-input:focus { outline: none; border-color: #38bdf8; }
-    #search-results {
-      position: absolute;
-      top: 52px;
-      right: 18px;
-      width: 360px;
-      max-width: 90vw;
-      max-height: 340px;
-      overflow-y: auto;
-      background: #1e293b;
-      border: 1px solid #38bdf8;
-      border-radius: 8px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
-      z-index: 90;
-      display: none;
+    h1 { margin: 0; font-family: Georgia, serif; font-size: 1.32rem; color: #19363a; }
+    .subheading { margin: 3px 0 0; color: #64736e; font-size: .79rem; }
+    .toolbar { justify-content: space-between; margin-top: 12px; }
+    .filters { gap: 6px; }
+    .toolbar-label {
+      color: #718079; font-size: .7rem; font-weight: 750;
+      letter-spacing: .08em; text-transform: uppercase; margin-right: 4px;
     }
-    .search-item {
-      padding: 9px 12px;
-      border-bottom: 1px solid #334155;
-      cursor: pointer;
-      font-size: 0.85rem;
+    .control {
+      border: 1px solid #d5e0da; border-radius: 9px; background: #fff;
+      color: #35534f; padding: 7px 10px; font-size: .8rem; font-weight: 600;
     }
-    .search-item:hover { background: #334155; }
-    .search-item small { display: block; color: #94a3b8; font-size: 0.74rem; margin-top: 2px; }
-    header .hint { font-size: 0.8rem; color: #94a3b8; }
-    #container { position: relative; flex: 1; display: flex; overflow: hidden; }
-    #mindmap { width: 100%; height: 100%; background: #0f172a; }
-    .markmap-node text, .markmap-node div {
-      fill: #f1f5f9 !important;
-      color: #f1f5f9 !important;
-      cursor: pointer;
+    .control:hover:not(:disabled) { background: #eef6f1; border-color: #9abdb0; }
+    .filter[aria-pressed="true"] { background: #226e6c; border-color: #226e6c; color: white; }
+    .search { position: relative; width: min(320px, 100%); }
+    .search input {
+      width: 100%; border: 1px solid #d5e0da; border-radius: 10px;
+      padding: 10px 12px; background: #f8faf8; color: #233238;
     }
-    .markmap-node div:hover { color: #38bdf8 !important; text-decoration: underline; }
-    #detail-panel {
-      position: fixed;
-      top: 0;
-      right: -480px;
-      width: 460px;
-      max-width: 94vw;
-      height: 100vh;
-      background: #1e293b;
-      border-left: 1px solid #38bdf8;
-      box-shadow: -8px 0 24px rgba(0, 0, 0, 0.55);
-      transition: right 0.3s ease;
-      z-index: 100;
-      display: flex;
-      flex-direction: column;
+    .results {
+      position: absolute; top: calc(100% + 6px); right: 0; width: min(480px, 90vw);
+      max-height: min(55vh, 480px); overflow-y: auto; background: #fff;
+      border: 1px solid var(--line); border-radius: 12px;
+      box-shadow: 0 14px 35px #18342a30; z-index: 5;
     }
-    #detail-panel.open { right: 0; }
-    .panel-header {
-      padding: 18px 20px;
-      background: #0f172a;
-      border-bottom: 1px solid #334155;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
+    .results[hidden], [hidden] { display: none !important; }
+    .result-count, .no-results { padding: 10px 13px; color: #64736e; font-size: .78rem; }
+    .result {
+      display: block; width: 100%; text-align: left; background: #fff;
+      border: 0; border-top: 1px solid #edf1ed; padding: 10px 13px; color: #253c39;
     }
-    .breadcrumb { font-size: 0.78rem; color: #38bdf8; margin-bottom: 6px; line-height: 1.4; }
-    #panel-title { font-size: 1.2rem; color: #ffffff; line-height: 1.3; }
-    #close-btn {
-      background: transparent;
-      border: 1px solid #475569;
-      color: #cbd5e1;
-      font-size: 1.2rem;
-      width: 32px;
-      height: 32px;
-      border-radius: 6px;
-      cursor: pointer;
-      flex-shrink: 0;
+    .result:hover, .result:focus-visible { background: #edf7f1; }
+    .result strong, .result small { display: block; overflow-wrap: anywhere; }
+    .result small { margin-top: 3px; color: #6b7973; line-height: 1.4; }
+    .guide {
+      max-width: 850px; margin-top: 12px; padding: 13px 16px; color: #425851;
+      background: #edf7ef; border: 1px solid #d3e8d8; border-radius: 10px;
+      font-size: .9rem; line-height: 1.55;
     }
-    #close-btn:hover { background: #334155; color: #fff; }
-    .panel-body {
-      padding: 20px;
-      overflow-y: auto;
-      flex: 1;
-      line-height: 1.65;
-      font-size: 0.95rem;
+    .guide p { margin: 0; }
+    .status { padding: 10px 18px; background: #fff0e8; color: #893b24; }
+    .workspace { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); min-height: 0; }
+    .map-area { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #f4f3ee; }
+    .map-heading {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 13px clamp(16px, 2vw, 25px); color: #63736d; font-size: .8rem;
     }
-    .section-card {
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 10px;
-      padding: 14px 16px;
-      margin-bottom: 14px;
+    .map-heading strong { color: #324c45; }
+    #mindmap { width: 100%; flex: 1; min-height: 320px; }
+    .markmap { --markmap-circle-open-bg: #f4f3ee; }
+    .markmap .node-label {
+      color: #274c47; cursor: pointer; font-family: system-ui, sans-serif;
+      font-size: 14px; line-height: 1.4;
     }
-    .section-card h3 {
-      font-size: 0.88rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: #38bdf8;
-      margin-bottom: 8px;
+    .markmap .node-label:hover, .markmap .node-label.selected { color: #116d68; text-decoration: underline; }
+    .reader {
+      background: #fff; border-left: 1px solid var(--line); overflow-y: auto;
+      min-width: 0; min-height: 0; padding: 25px clamp(18px, 2.2vw, 30px) 28px;
     }
-    .section-card p { color: #e2e8f0; white-space: pre-line; }
+    .eyebrow {
+      margin: 0 0 9px; color: #a87935; font-size: .7rem;
+      text-transform: uppercase; font-weight: 800; letter-spacing: .12em;
+    }
+    .breadcrumb { color: #6f8079; font-size: .76rem; line-height: 1.6; overflow-wrap: anywhere; }
+    .reader h2 {
+      margin: 12px 0 8px; color: #1c3e3b; font-family: Georgia, serif;
+      font-size: clamp(1.3rem, 2vw, 1.65rem); line-height: 1.24; overflow-wrap: anywhere;
+    }
+    .reader-lead { color: #798980; margin: 0 0 20px; font-size: .84rem; line-height: 1.5; }
+    .card { border: 1px solid #e3ebe5; border-radius: 13px; padding: 16px; margin: 12px 0; background: #fafcf9; }
+    .card.message { background: #edf7f1; border-color: #cfe7d7; }
+    .card.glossary { background: #fcf8ee; border-color: #ece0c8; }
+    .card h3 { margin: 0 0 8px; color: #29544c; font-size: .92rem; line-height: 1.4; }
+    .card p, .card dd { margin: 0; color: #43564f; font-size: .9rem; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .card dl { margin: 0; }
+    .card dt { margin-top: 10px; color: #775c2d; font-weight: 700; font-size: .87rem; }
+    .card dt:first-child { margin-top: 0; }
+    .pager { display: flex; justify-content: space-between; gap: 10px; margin-top: 19px; }
+    .pager .control { flex: 1; }
+    .page-position { color: #7b8b82; font-size: .75rem; text-align: center; margin: 10px 0 0; }
+    @media (min-width: 801px) {
+      body { height: 100vh; height: 100dvh; overflow: hidden; }
+    }
+    @media (max-width: 800px) {
+      .heading-row { align-items: stretch; }
+      .search { width: 100%; }
+      .results { left: 0; right: auto; width: min(100%, 480px); }
+      .workspace { display: flex; flex-direction: column; }
+      #mindmap { height: 420px; min-height: 350px; flex: none; }
+      .reader { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+      .toolbar { align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="title-group">
-      <h1>Zohár – Kezdőbarát Gondolattérkép</h1>
-      <span class="badge" id="node-count">Betöltés...</span>
-      <span class="hint">Kattints a szövegre a magyarázathoz, a körre a nyitáshoz!</span>
+  <header class="topbar">
+    <div class="heading-row">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">✦</div>
+        <div>
+          <h1>Zohár · tanulótérkép</h1>
+          <p class="subheading">Egy nyugodt hely az első lépésekhez <span id="node-count"></span></p>
+        </div>
+      </div>
+      <div class="search">
+        <label for="search-input" class="toolbar-label">Keresés a teljes térképen</label>
+        <input id="search-input" type="search" placeholder="Keress témát vagy fogalmat…" autocomplete="off" aria-controls="search-results" aria-expanded="false">
+        <div id="search-results" class="results" hidden></div>
+      </div>
     </div>
-    <div class="controls">
-      <button id="fit-btn" title="Térkép középre igazítása">Középre</button>
-      <input type="text" id="search-input" placeholder="Keresés a kötetekben..." autocomplete="off" />
+    <div class="toolbar">
+      <nav class="filters" id="volume-filters" aria-label="Kötetek">
+        <span class="toolbar-label">Kötetek</span>
+      </nav>
+      <div class="map-controls" role="group" aria-label="Térkép vezérlése">
+        <button class="control" id="collapse" type="button" disabled>Ágak összecsukása</button>
+        <button class="control" id="expand" type="button" disabled>Kibontás (2. szint)</button>
+        <button class="control" id="fit" type="button" disabled>Középre igazítás</button>
+        <button class="control" id="zoom-in" type="button" aria-label="Nagyítás" disabled>+</button>
+        <button class="control" id="zoom-out" type="button" aria-label="Kicsinyítés" disabled>−</button>
+        <button class="control" id="guide-toggle" type="button" aria-expanded="false" aria-controls="guide">Hogyan használd?</button>
+      </div>
+    </div>
+    <div class="guide" id="guide" hidden>
+      <p>Üdvözlünk! Válassz kötetet, és kattints egy téma szövegére: a magyarázat az olvasópanelen jelenik meg. Az ágak végén lévő körrel nyithatod és csukhatod az alágakat; a térképet húzással mozgathatod és görgetéssel nagyíthatod. A kereső az összes kötetben keres, a panel alján pedig sorban is továbbhaladhatsz. A fogalomtár az adott szövegben előforduló kifejezéseket segít értelmezni.</p>
     </div>
   </header>
-  <div id="search-results"></div>
-
-  <div id="container">
-    <svg id="mindmap"></svg>
-  </div>
-
-  <aside id="detail-panel" aria-hidden="true">
-    <div class="panel-header">
-      <div>
-        <div class="breadcrumb" id="panel-path"></div>
-        <h2 id="panel-title">Témakör</h2>
-      </div>
-      <button id="close-btn" title="Bezárás">&times;</button>
-    </div>
-    <div class="panel-body">
-      <div class="section-card">
-        <h3>1. Miről szól ez a téma?</h3>
+  <div id="status" class="status" role="alert" hidden></div>
+  <main class="workspace">
+    <section class="map-area" aria-label="Interaktív gondolattérkép">
+      <div class="map-heading"><strong id="map-title">A tanítások térképe</strong><span>Válassz egy témát a térképen</span></div>
+      <svg id="mindmap" aria-label="Gondolattérkép"></svg>
+    </section>
+    <aside class="reader" id="reader" aria-label="Olvasópanel">
+      <p class="eyebrow">Útjelző a tanuláshoz</p>
+      <div id="panel-path" class="breadcrumb"></div>
+      <h2 id="panel-title">A térkép betöltése…</h2>
+      <p class="reader-lead">Haladj a saját tempódban: minden téma egy újabb kapcsolódási pont.</p>
+      <section class="card">
+        <h3>Miről szól ez a tanítás? <span>· Hétköznapi kép és jelentés</span></h3>
         <p id="panel-intro"></p>
-      </div>
-      <div class="section-card">
-        <h3>2. Mi a belső, szellemi üzenete?</h3>
+      </section>
+      <section class="card message">
+        <h3>Mi a belső, szellemi üzenete? <span>· Fény, Edény és a szándék iránya</span></h3>
         <p id="panel-inner"></p>
-      </div>
-      <div class="section-card">
-        <h3>3. Hogyan kapcsolódik a többi részhez?</h3>
+      </section>
+      <section class="card">
+        <h3>Hogyan kapcsolódik a nagy egészhez?</h3>
         <p id="panel-connection"></p>
+      </section>
+      <section class="card glossary" id="glossary" hidden>
+        <h3>Kezdőbarát fogalommagyarázó ehhez a szakaszhoz</h3>
+        <dl id="glossary-terms"></dl>
+      </section>
+      <div class="pager">
+        <button class="control" type="button" id="previous" disabled>← Előző téma</button>
+        <button class="control" type="button" id="next" disabled>Következő téma →</button>
       </div>
-    </div>
-  </aside>
-
+      <p id="page-position" class="page-position" aria-live="polite"></p>
+    </aside>
+  </main>
   <script>
-    const nodeLookup = new Map();
-    let mmInstance = null;
+    (() => {
+      const byId = new Map();
+      const entries = [];
+      let tree;
+      let selectedVolume = null;
+      let selected = null;
+      let map = null;
+      const svg = document.querySelector("#mindmap");
+      const reader = document.querySelector("#reader");
+      const search = document.querySelector("#search-input");
+      const results = document.querySelector("#search-results");
+      const filters = document.querySelector("#volume-filters");
+      const status = document.querySelector("#status");
+      const glossary = [
+        ["Cimcum", /(?:^|[^\p{L}\p{N}])cimc[uú]m[\p{L}]*/iu, "Visszahúzódás: mint amikor valaki helyet készít a másiknak, hogy ő is kibontakozhasson."],
+        ["Keli", /(?:^|[^\p{L}\p{N}])keli[\p{L}]*/iu, "Edény: a befogadásra képes vágy, mint egy pohár, amelybe vizet lehet tölteni."],
+        ["Ór", /(?:^|[^\p{L}\p{N}])ór(?:t|nak|ral|ra|ban)?(?=$|[^\p{L}\p{N}])/iu, "Fény: a tanításban a kapott élet, öröm vagy beteljesülés képe, nem feltétlenül látható fény."],
+        ["Maszah", /(?:^|[^\p{L}\p{N}])masz(?:a|á)h[\p{L}]*/iu, "Szűrő vagy ernyő: segít megfontolni, hogyan és milyen szándékkal fogadunk be."],
+        ["Szefirák", /(?:^|[^\p{L}\p{N}])szefir[\p{L}]*/iu, "A fény megnyilvánulásának különböző minőségei, mint a fehér fény színei egy prizmában."],
+        ["Klipot", /(?:^|[^\p{L}\p{N}])klip[\p{L}]*/iu, "Héjak: olyan belső minták képe, amelyek eltakarhatják az önzetlen kapcsolódást."],
+        ["Partzufim", /(?:^|[^\p{L}\p{N}])(?:partzuf|parcuf)[\p{L}]*/iu, "Spirituális alakzatok: összekapcsolódó tulajdonságok együttesei, mint egy együttműködő csapat."],
+        ["Rózsa", /(?:^|[^\p{L}\p{N}])rózs[aá][\p{L}]*/iu, "A Zohár egyik jelképe: a szépséget és a védelmet együtt hordozó virág képe."],
+        ["Szulám", /(?:^|[^\p{L}\p{N}])szul[aá]m[\p{L}]*/iu, "Létra: a Zohárhoz írt magyarázat neve; a fokozatos megértés képét idézi."],
+        ["Ein Szof", /(?:^|[^\p{L}\p{N}])ein\s+szof[\p{L}]*/iu, "Végtelen: a kabbalában a határokon túli isteni teljesség megnevezése."],
+        ["Teremtő", /(?:^|[^\p{L}\p{N}])teremtő[\p{L}]*/iu, "A tanításokban a teremtés forrásának, illetve az adás és szeretet erejének megnevezése."]
+      ];
 
-    function buildMarkdown(node, depth = 1, path = []) {
-      const currentPath = [...path, node.title];
-      nodeLookup.set(node.title.trim(), {
-        title: node.title.trim(),
-        path: currentPath.join(' › '),
-        summary: node.summary
-      });
-      const prefix = depth <= 6 ? '#'.repeat(depth) : '  '.repeat(depth - 6) + '-';
-      let md = `${prefix} ${node.title}\n\n`;
-      if (Array.isArray(node.children)) {
-        for (const child of node.children) {
-          md += buildMarkdown(child, depth + 1, currentPath);
+      function escapeHtml(text) {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+
+      function indexNode(node, path, volume) {
+        if (!node || typeof node.title !== "string" || !node.title.trim() ||
+            !node.summary || !Array.isArray(node.children) ||
+            ["intro", "inner_meaning", "connection"].some(
+              key => typeof node.summary[key] !== "string" || !node.summary[key].trim()
+            )) {
+          throw new Error("A JSON egy csomópontja hiányos vagy hibás.");
+        }
+        const id = String(entries.length);
+        const entry = { id, node, path: [...path, id], volume };
+        if (path.length === 1) entry.volume = id;
+        entries.push(entry);
+        byId.set(id, entry);
+        entry.children = node.children.map(child => indexNode(child, entry.path, entry.volume));
+        return entry;
+      }
+
+      function pathText(entry) {
+        return entry.path.map(id => byId.get(id).node.title).join(" › ");
+      }
+
+      function scopeEntries() {
+        return selectedVolume === null ? entries : entries.filter(entry => entry.volume === selectedVolume);
+      }
+
+      function markmapNode(entry, depth, level, ancestors) {
+        const expandedForSelection = ancestors && ancestors.has(entry.id);
+        return {
+          content: `<span class="node-label${selected && selected.id === entry.id ? " selected" : ""}" data-node-id="${entry.id}" role="button" tabindex="0">${escapeHtml(entry.node.title)}</span>`,
+          payload: { fold: depth >= level && !expandedForSelection ? 1 : 0, nodeId: entry.id },
+          children: entry.children.map(child => markmapNode(child, depth + 1, level, ancestors))
+        };
+      }
+
+      function renderMap(level = 1, focus = null) {
+        if (!window.markmap || !window.markmap.Markmap || !window.d3) return;
+        const root = selectedVolume === null ? tree : byId.get(selectedVolume);
+        const ancestors = focus ? new Set(focus.path.slice(0, -1)) : null;
+        if (map) map.destroy();
+        const data = markmapNode(root, 0, level, ancestors);
+        map = window.markmap.Markmap.create(svg, {
+          initialExpandLevel: -1, duration: 0, maxWidth: 250, spacingVertical: 8
+        }, data);
+        const currentMap = map;
+        function findNode(node, id) {
+          if (node.payload.nodeId === id) return node;
+          for (const child of node.children) {
+            const found = findNode(child, id);
+            if (found) return found;
+          }
+          return null;
+        }
+        currentMap.fit().then(async () => {
+          if (map !== currentMap) return;
+          const scale = window.d3.zoomTransform(svg).k;
+          if (scale < 0.65) await currentMap.rescale(0.65 / scale);
+          if (map !== currentMap) return;
+          const target = focus ? findNode(data, focus.id) : data;
+          if (target) await currentMap.ensureView(target, { top: 24, bottom: 24, left: 24, right: 24 });
+        });
+      }
+
+      function setVolume(id) {
+        selectedVolume = id;
+        filters.querySelectorAll("button").forEach(button => {
+          button.setAttribute("aria-pressed", String(button.dataset.volume === (id ?? "all")));
+        });
+        const root = id === null ? tree : byId.get(id);
+        document.querySelector("#map-title").textContent = root.node.title;
+        selectEntry(root, true);
+      }
+
+      function showGlossary(entry) {
+        const text = [entry.node.title, ...Object.values(entry.node.summary)].join(" ");
+        const matches = glossary.filter(([, pattern]) => pattern.test(text));
+        const list = document.querySelector("#glossary-terms");
+        list.replaceChildren();
+        for (const [term, , explanation] of matches) {
+          const dt = document.createElement("dt");
+          const dd = document.createElement("dd");
+          dt.textContent = term;
+          dd.textContent = explanation;
+          list.append(dt, dd);
+        }
+        document.querySelector("#glossary").hidden = matches.length === 0;
+      }
+
+      function selectEntry(entry, redraw = false) {
+        selected = entry;
+        document.querySelector("#panel-path").textContent = pathText(entry);
+        document.querySelector("#panel-title").textContent = entry.node.title;
+        document.querySelector("#panel-intro").textContent = entry.node.summary.intro;
+        document.querySelector("#panel-inner").textContent = entry.node.summary.inner_meaning;
+        document.querySelector("#panel-connection").textContent = entry.node.summary.connection;
+        showGlossary(entry);
+        const scope = scopeEntries();
+        const index = scope.findIndex(item => item.id === entry.id);
+        document.querySelector("#previous").disabled = index <= 0;
+        document.querySelector("#next").disabled = index < 0 || index === scope.length - 1;
+        document.querySelector("#page-position").textContent = `${index + 1} / ${scope.length} téma`;
+        reader.scrollTop = 0;
+        if (redraw) {
+          renderMap(1, entry);
+        } else {
+          svg.querySelectorAll(".node-label").forEach(label => {
+            label.classList.toggle("selected", label.dataset.nodeId === entry.id);
+          });
         }
       }
-      return md;
-    }
 
-    function openPanel(title) {
-      const data = nodeLookup.get(title.trim());
-      if (!data) return;
-      document.getElementById('panel-title').textContent = data.title;
-      document.getElementById('panel-path').textContent = data.path;
-      document.getElementById('panel-intro').textContent = data.summary?.intro || '';
-      document.getElementById('panel-inner').textContent = data.summary?.inner_meaning || '';
-      document.getElementById('panel-connection').textContent = data.summary?.connection || '';
-      document.getElementById('detail-panel').classList.add('open');
-    }
-
-    document.getElementById('close-btn').addEventListener('click', () => {
-      document.getElementById('detail-panel').classList.remove('open');
-    });
-    document.getElementById('fit-btn').addEventListener('click', () => {
-      if (mmInstance) mmInstance.fit();
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        document.getElementById('detail-panel').classList.remove('open');
-        document.getElementById('search-results').style.display = 'none';
+      function move(delta) {
+        const scope = scopeEntries();
+        const index = scope.findIndex(item => item.id === selected.id);
+        const next = scope[index + delta];
+        if (next) selectEntry(next, true);
       }
-    });
 
-    const searchInput = document.getElementById('search-input');
-    const searchResults = document.getElementById('search-results');
-
-    searchInput.addEventListener('input', () => {
-      const q = searchInput.value.trim().toLowerCase();
-      if (q.length < 2) {
-        searchResults.style.display = 'none';
-        return;
+      function addFilter(label, id, description) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "control filter";
+        button.dataset.volume = id ?? "all";
+        button.textContent = label;
+        button.title = description;
+        button.setAttribute("aria-pressed", String(id === null));
+        button.addEventListener("click", () => setVolume(id));
+        filters.append(button);
       }
-      const matches = [];
-      for (const item of nodeLookup.values()) {
-        const hay = (item.title + ' ' + (item.summary?.intro || '') + ' ' + (item.summary?.inner_meaning || '')).toLowerCase();
-        if (hay.includes(q)) matches.push(item);
+
+      function hideResults() {
+        results.hidden = true;
+        search.setAttribute("aria-expanded", "false");
       }
-      searchResults.innerHTML = matches.slice(0, 30).map(m =>
-        `<div class="search-item" data-title="${m.title.replace(/"/g, '&quot;')}">
-          <strong>${m.title}</strong>
-          <small>${m.path}</small>
-        </div>`
-      ).join('') || '<div class="search-item">Nincs találat</div>';
-      searchResults.style.display = 'block';
-    });
 
-    searchResults.addEventListener('click', (e) => {
-      const item = e.target.closest('.search-item');
-      if (item && item.dataset.title) {
-        openPanel(item.dataset.title);
-        searchResults.style.display = 'none';
-      }
-    });
-
-    fetch('zohar_summaries.json?v=' + Date.now())
-      .then(res => res.json())
-      .then(tree => {
-        const md = buildMarkdown(tree);
-        document.getElementById('node-count').textContent = `${nodeLookup.size} témakör`;
-        const transformer = new markmap.Transformer();
-        const { root } = transformer.transform(md);
-        mmInstance = markmap.Markmap.create('#mindmap', { initialExpandLevel: 2, duration: 400 }, root);
-
-        document.getElementById('mindmap').addEventListener('click', (e) => {
-          const fo = e.target.closest('foreignObject');
-          if (fo) {
-            const text = fo.textContent.trim();
-            if (nodeLookup.has(text)) {
-              openPanel(text);
+      function updateSearch() {
+        const query = search.value.trim().toLocaleLowerCase("hu");
+        results.replaceChildren();
+        if (!query) { hideResults(); return; }
+        const matches = entries.filter(entry =>
+          [entry.node.title, entry.node.summary.intro, entry.node.summary.inner_meaning, entry.node.summary.connection]
+            .some(text => text.toLocaleLowerCase("hu").includes(query))
+        );
+        const count = document.createElement("div");
+        count.className = matches.length ? "result-count" : "no-results";
+        count.textContent = matches.length ? `${matches.length} találat az összes kötetben` : "Nincs találat.";
+        results.append(count);
+        for (const entry of matches) {
+          const button = document.createElement("button");
+          const title = document.createElement("strong");
+          const path = document.createElement("small");
+          button.type = "button";
+          button.className = "result";
+          title.textContent = entry.node.title;
+          path.textContent = pathText(entry);
+          button.append(title, path);
+          button.addEventListener("click", () => {
+            if (entry.volume !== selectedVolume) {
+              selectedVolume = entry.volume;
+              filters.querySelectorAll("button").forEach(item => {
+                item.setAttribute("aria-pressed", String(item.dataset.volume === (selectedVolume ?? "all")));
+              });
+              const root = selectedVolume === null ? tree : byId.get(selectedVolume);
+              document.querySelector("#map-title").textContent = root.node.title;
             }
-          }
-        });
+            selectEntry(entry, true);
+            hideResults();
+            if (window.matchMedia("(max-width: 800px)").matches) reader.scrollIntoView({ block: "start" });
+          });
+          results.append(button);
+        }
+        results.hidden = false;
+        search.setAttribute("aria-expanded", "true");
+      }
 
-        openPanel(tree.title);
+      svg.addEventListener("click", event => {
+        const label = event.target.closest("[data-node-id]");
+        if (!label) return;
+        const entry = byId.get(label.dataset.nodeId);
+        if (!entry) return;
+        selectEntry(entry);
+        if (window.matchMedia("(max-width: 800px)").matches) reader.scrollIntoView({ block: "start" });
       });
+      svg.addEventListener("keydown", event => {
+        const label = event.target.closest("[data-node-id]");
+        if (!label || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        label.click();
+      });
+      document.querySelector("#collapse").addEventListener("click", () => renderMap(1));
+      document.querySelector("#expand").addEventListener("click", () => renderMap(2));
+      document.querySelector("#fit").addEventListener("click", () => { if (map) map.fit(); });
+      document.querySelector("#zoom-in").addEventListener("click", () => { if (map) map.rescale(1.3); });
+      document.querySelector("#zoom-out").addEventListener("click", () => { if (map) map.rescale(1 / 1.3); });
+      document.querySelector("#previous").addEventListener("click", () => move(-1));
+      document.querySelector("#next").addEventListener("click", () => move(1));
+      document.querySelector("#guide-toggle").addEventListener("click", event => {
+        const guide = document.querySelector("#guide");
+        guide.hidden = !guide.hidden;
+        event.currentTarget.setAttribute("aria-expanded", String(!guide.hidden));
+      });
+      search.addEventListener("input", updateSearch);
+      search.addEventListener("focus", () => { if (search.value.trim()) updateSearch(); });
+      document.addEventListener("click", event => {
+        if (!event.target.closest(".search")) hideResults();
+      });
+      document.addEventListener("keydown", event => {
+        if (event.key === "Escape") hideResults();
+      });
+
+      fetch("./zohar_summaries.json", { cache: "no-cache" })
+        .then(response => {
+          if (!response.ok) throw new Error(`A JSON betöltése sikertelen: HTTP ${response.status}`);
+          return response.json();
+        })
+        .then(data => {
+          tree = indexNode(data, [], null);
+          document.querySelector("#node-count").textContent = `· ${entries.length} téma`;
+          addFilter("Összes kötet", null, "Az összes kötet");
+          tree.children.forEach((entry, index) => {
+            const match = entry.node.title.match(/^\s*(\d+)\.\s*kötet\b/iu);
+            addFilter(match ? `${match[1]}. kötet` : entry.node.title, entry.id, entry.node.title);
+          });
+          if (!window.markmap || !window.markmap.Markmap || !window.d3) {
+            throw new Error("A térkép megjelenítője nem tölthető be. Ellenőrizd az internetkapcsolatot.");
+          }
+          document.querySelectorAll("#collapse, #expand, #fit, #zoom-in, #zoom-out").forEach(button => { button.disabled = false; });
+          setVolume(null);
+        })
+        .catch(error => {
+          console.error("A térkép betöltése sikertelen:", error);
+          status.textContent = `A térkép nem tölthető be: ${error.message} Helyi megnyitáshoz használj HTTP-kiszzolgálót.`;
+          status.hidden = false;
+          document.querySelector("#panel-title").textContent = "A térkép nem érhető el";
+        });
+    })();
   </script>
 </body>
 </html>
