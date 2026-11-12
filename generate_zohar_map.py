@@ -5,21 +5,23 @@ import time
 from datetime import datetime
 from pathlib import Path
 from docx import Document
+from docx.oxml.ns import qn
 from google import genai
 from google.genai import types
 
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-4-carbon")
-CHUNK_CHAR_LIMIT = 45000  # Kb. 25-35 oldalnyi szöveg szakaszonként
-CACHE_FILE = Path("zohar_chunks_cache.json")
+CHUNK_CHAR_LIMIT = 80000  # Kb. 12-13 ezer szó szakaszonként
+CACHE_DIR = Path("cache")
+SOURCES_DIR = Path("sources")
 
 CHUNK_SYSTEM_PROMPT = """
 Te a Kabbala és a Zohár autentikus, rendkívül közérthető tanítója vagy.
-Egy 426 oldalas Zohár-mű egyik összefüggő szövegszakaszát kapod meg.
-A feladatod, hogy ebből a szakaszból kinyerd az ÖSSZES lényeges tanítást, példázatot, fogalmat és összefüggést olyan olvasóknak, AKIK MOST ISMERKEDNEK A KABBALÁVAL.
+Egy több száz oldalas Zohár-kötet egyik összefüggő szövegszakaszát kapod meg.
+A feladatod, hogy ebből a szakaszból kinyerd az ÖSSZES lényeges tanítást, példázatot, fogalmat és összefüggést olyan magyar olvasóknak, AKIK MOST ISMERKEDNEK A KABBALÁVAL.
 
 Szabályok minden egyes csomóponthoz:
-1. Ne hagyj ki fontos altémákat vagy példázatokat ebből a szakaszból! Készíts 1-3 főágat a szakasz fő témáiból, és mindegyikhez 3-5 részletes alágat (szükség esetén 3. szintű alágakat is).
-2. Kerüld a megmagyarázatlan héber/arámi szakkifejezéseket! Ha szerepel egy alapfogalom (pl. Cimcum, Keli, Ór, Szefirák, Klipot, Rózsa, Maszah), azonnal fordítsd le hétköznapi magyar nyelvre és szemléletes hasonlatra.
+1. Ne hagyj ki fontos altémákat vagy példázatokat ebből a szakaszból! Készíts 2-3 főágat a szakasz fő témáiból, és mindegyikhez 3-5 részletes alágat (szükség esetén 3. szintű alágakat is).
+2. Kerüld a megmagyarázatlan héber/arámi szakkifejezéseket! Ha szerepel egy alapfogalom (pl. Cimcum, Keli, Ór, Szefirák, Klipot, Rózsa, Maszah, Partzufim), azonnal fordítsd le hétköznapi magyar nyelvre és szemléletes hasonlatra.
 3. Minden csomópont összefoglalója pontosan 3 mezőből álljon:
    - "intro": Miről szól ez a téma? (Világos, barátságos bevezető és hétköznapi analógia, 3-5 mondatban.)
    - "inner_meaning": Mi a belső, szellemi üzenete? (A vágyak működése, az adás és befogadás szándéka közérthetően, 3-5 mondatban.)
@@ -29,7 +31,7 @@ Kizárólag érvényes JSON struktúrát adj vissza az alábbi formátumban:
 {
   "branches": [
     {
-      "title": "Témakör pontos, beszédes címe",
+      "title": "Témakör pontos, beszédes magyar címe",
       "summary": {
         "intro": "...",
         "inner_meaning": "...",
@@ -51,13 +53,29 @@ Kizárólag érvényes JSON struktúrát adj vissza az alábbi formátumban:
 }
 """
 
-ROOT_SYSTEM_PROMPT = """
+BOOK_SYSTEM_PROMPT = """
 Te a Kabbala és a Zohár közérthető tanítója vagy.
-A feladatod, hogy a mellékelt témakör-lista alapján megírd a teljes 426 oldalas Zohár-gondolattérkép központi (gyökér) csomópontjának kezdőbarát bevezetőjét.
+Egy teljes Zohár-kötet fájljának nevét és a belőle kinyert fő fejezetek listáját kapod meg.
+Adj a kötetnek egy tiszta, beszédes magyar főcímet (pl. '1. Kötet: Bevezetés a Zohár könyvéhez – A rózsa'), és írj hozzá kezdőbarát összefoglalót.
 
 Kizárólag érvényes JSON-t adj vissza:
 {
-  "title": "Bevezetés a Zohár könyvéhez – Teljes Útmutató",
+  "title": "Kötet beszédes magyar címe",
+  "summary": {
+    "intro": "...",
+    "inner_meaning": "...",
+    "connection": "..."
+  }
+}
+"""
+
+ROOT_SYSTEM_PROMPT = """
+Te a Kabbala és a Zohár közérthető tanítója vagy.
+A feladatod, hogy a feldolgozott Zohár-kötetek listája alapján megírd a teljes egyesített gondolattérkép központi (gyökér) csomópontjának kezdőbarát bevezetőjét.
+
+Kizárólag érvényes JSON-t adj vissza:
+{
+  "title": "Zohár Tudástár – Átfogó Kezdőbarát Gondolattérkép",
   "summary": {
     "intro": "...",
     "inner_meaning": "...",
@@ -107,6 +125,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-radius: 999px;
     }
     .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    #fit-btn {
+      background: #0f172a;
+      border: 1px solid #475569;
+      color: #e2e8f0;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    #fit-btn:hover { border-color: #38bdf8; color: #38bdf8; }
     #search-input {
       background: #0f172a;
       border: 1px solid #475569;
@@ -121,9 +149,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       position: absolute;
       top: 52px;
       right: 18px;
-      width: 340px;
+      width: 360px;
       max-width: 90vw;
-      max-height: 320px;
+      max-height: 340px;
       overflow-y: auto;
       background: #1e293b;
       border: 1px solid #38bdf8;
@@ -220,7 +248,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="hint">Kattints a szövegre a magyarázathoz, a körre a nyitáshoz!</span>
     </div>
     <div class="controls">
-      <input type="text" id="search-input" placeholder="Keresés a témák között..." autocomplete="off" />
+      <button id="fit-btn" title="Térkép középre igazítása">Középre</button>
+      <input type="text" id="search-input" placeholder="Keresés a kötetekben..." autocomplete="off" />
     </div>
   </header>
   <div id="search-results"></div>
@@ -255,6 +284,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <script>
     const nodeLookup = new Map();
+    let mmInstance = null;
 
     function buildMarkdown(node, depth = 1, path = []) {
       const currentPath = [...path, node.title];
@@ -287,6 +317,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     document.getElementById('close-btn').addEventListener('click', () => {
       document.getElementById('detail-panel').classList.remove('open');
     });
+    document.getElementById('fit-btn').addEventListener('click', () => {
+      if (mmInstance) mmInstance.fit();
+    });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         document.getElementById('detail-panel').classList.remove('open');
@@ -308,7 +341,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const hay = (item.title + ' ' + (item.summary?.intro || '') + ' ' + (item.summary?.inner_meaning || '')).toLowerCase();
         if (hay.includes(q)) matches.push(item);
       }
-      searchResults.innerHTML = matches.slice(0, 25).map(m =>
+      searchResults.innerHTML = matches.slice(0, 30).map(m =>
         `<div class="search-item" data-title="${m.title.replace(/"/g, '&quot;')}">
           <strong>${m.title}</strong>
           <small>${m.path}</small>
@@ -332,7 +365,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         document.getElementById('node-count').textContent = `${nodeLookup.size} témakör`;
         const transformer = new markmap.Transformer();
         const { root } = transformer.transform(md);
-        markmap.Markmap.create('#mindmap', { initialExpandLevel: 2, duration: 400 }, root);
+        mmInstance = markmap.Markmap.create('#mindmap', { initialExpandLevel: 2, duration: 400 }, root);
 
         document.getElementById('mindmap').addEventListener('click', (e) => {
           const fo = e.target.closest('foreignObject');
@@ -352,21 +385,43 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 
-def find_docx() -> Path:
-    for p in Path(".").glob("*zohar*.docx"):
-        return p
-    for p in Path(".").glob("*.docx"):
-        return p
-    raise FileNotFoundError("Nem található .docx fájl a mappában.")
+def find_all_docx_files() -> list[Path]:
+    """Megkeresi az összes forrás .docx fájlt a sources/ mappában, vagy ha nincs, az aktuális mappában."""
+    search_dir = SOURCES_DIR if SOURCES_DIR.exists() else Path(".")
+    files = sorted(
+        [p for p in search_dir.glob("*.docx") if not p.name.startswith("~$")],
+        key=lambda p: p.name.lower(),
+    )
+    if not files and search_dir != Path("."):
+        files = sorted(
+            [p for p in Path(".").glob("*.docx") if not p.name.startswith("~$")],
+            key=lambda p: p.name.lower(),
+        )
+    if not files:
+        raise FileNotFoundError("Nem található egyetlen .docx forrásfájl sem.")
+    return files
 
 
-def split_docx_into_chunks(path: Path, char_limit: int) -> list[str]:
+def extract_all_docx_paragraphs(path: Path) -> list[str]:
     doc = Document(path)
-    paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-    chunks = []
-    current = []
-    current_len = 0
+    paragraphs = []
+    for p in doc.element.body.iter(qn("w:p")):
+        texts = []
+        for elem in p.iter():
+            if elem.tag == qn("w:t") and elem.text:
+                parent = elem.getparent()
+                while parent is not None and parent.tag != qn("w:p"):
+                    parent = parent.getparent()
+                if parent is p:
+                    texts.append(elem.text)
+        line = "".join(texts).strip()
+        if line:
+            paragraphs.append(line)
+    return paragraphs
 
+
+def split_paragraphs_into_chunks(paragraphs: list[str], char_limit: int) -> list[str]:
+    chunks, current, current_len = [], [], 0
     for p in paragraphs:
         if current_len + len(p) > char_limit and current:
             chunks.append("\n\n".join(current))
@@ -375,7 +430,6 @@ def split_docx_into_chunks(path: Path, char_limit: int) -> list[str]:
         else:
             current.append(p)
             current_len += len(p) + 2
-
     if current:
         chunks.append("\n\n".join(current))
     return chunks
@@ -410,6 +464,63 @@ def call_gemini_json(client: genai.Client, system_prompt: str, user_prompt: str)
     raise RuntimeError("A Gemini API hívás 3 próbálkozás után sem sikerült.")
 
 
+def process_single_book(client: genai.Client, docx_path: Path, book_index: int) -> dict:
+    CACHE_DIR.mkdir(exist_ok=True)
+    cache_file = CACHE_DIR / f"{docx_path.stem}.json"
+
+    paragraphs = extract_all_docx_paragraphs(docx_path)
+    full_text = "\n\n".join(paragraphs)
+    word_count = len(full_text.split())
+    chunks = split_paragraphs_into_chunks(paragraphs, CHUNK_CHAR_LIMIT)
+    total = len(chunks)
+
+    print(f"\n=== [{book_index}. KÖTET] {docx_path.name} (~{word_count:,} szó, {total} szakasz) ===")
+
+    cache = json.loads(cache_file.read_text(encoding="utf-8")) if cache_file.exists() else {}
+    all_branches = []
+    prev_topic = "A kötet nyitánya"
+
+    for idx, chunk_text in enumerate(chunks, start=1):
+        key = str(idx)
+        if key in cache:
+            print(f"  [{idx}/{total}] Betöltve a gyorsítótárból.")
+            branches = cache[key]
+        else:
+            print(f"  [{idx}/{total}] Mélyelemzés folyamatban ({len(chunk_text):,} karakter)...")
+            prompt = (
+                f"Ez a kötet {idx}. szakasza (összesen {total} szakaszból). "
+                f"Az előző szakasz záró témaköre: '{prev_topic}'.\n\n"
+                f"Forrásszöveg:\n{chunk_text}"
+            )
+            data = call_gemini_json(client, CHUNK_SYSTEM_PROMPT, prompt)
+            branches = data.get("branches", [])
+            cache[key] = branches
+            cache_file.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        if branches:
+            prev_topic = branches[-1].get("title", prev_topic)
+            all_branches.extend(branches)
+
+    if "book_meta" in cache:
+        book_meta = cache["book_meta"]
+    else:
+        print(f"  Kötet-összefoglaló generálása ({docx_path.name})...")
+        titles_list = "\n".join(f"- {b['title']}" for b in all_branches)
+        book_meta = call_gemini_json(
+            client,
+            BOOK_SYSTEM_PROMPT,
+            f"Kötet sorszáma: {book_index}. Fájlnév: {docx_path.name}\n\nFő témakörök:\n{titles_list}",
+        )
+        cache["book_meta"] = book_meta
+        cache_file.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {
+        "title": book_meta.get("title", f"{book_index}. Kötet: {docx_path.stem}"),
+        "summary": book_meta.get("summary", {}),
+        "children": all_branches,
+    }
+
+
 def deduplicate_titles(node: dict, seen: set[str]):
     base_title = node["title"].strip()
     title = base_title
@@ -438,65 +549,41 @@ def backup_existing_files():
 
 
 def main():
-    docx_path = find_docx()
-    print(f"Forrásfájl: {docx_path.name}")
-    chunks = split_docx_into_chunks(docx_path, CHUNK_CHAR_LIMIT)
-    total = len(chunks)
-    print(f"A teljes dokumentum {total} részre bontva a mélyelemzéshez ({MODEL_NAME}).")
-
-    cache = {}
-    if CACHE_FILE.exists():
-        cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-        print(f"Korábbi mentett szakaszok betöltve: {len(cache)}/{total}")
+    docx_files = find_all_docx_files()
+    print(f"Talált Zohár forráskötetek száma: {len(docx_files)}")
+    for idx, f in enumerate(docx_files, start=1):
+        print(f"  {idx}. {f.name}")
 
     client = genai.Client()
-    all_branches = []
-    prev_topic = "A könyv nyitánya"
+    book_nodes = []
 
-    for idx, chunk_text in enumerate(chunks, start=1):
-        key = str(idx)
-        if key in cache:
-            print(f"[{idx}/{total}] Szakasz betöltve a gyorsítótárból.")
-            branches = cache[key]
-        else:
-            print(f"[{idx}/{total}] Mélyelemzés folyamatban ({len(chunk_text)} karakter)...")
-            prompt = (
-                f"Ez a 426 oldalas könyv {idx}. szakasza (összesen {total} szakaszból). "
-                f"Az előző szakasz záró témaköre: '{prev_topic}'.\n\n"
-                f"Forrásszöveg:\n{chunk_text}"
-            )
-            data = call_gemini_json(client, CHUNK_SYSTEM_PROMPT, prompt)
-            branches = data.get("branches", [])
-            cache[key] = branches
-            CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    for idx, docx_path in enumerate(docx_files, start=1):
+        book_node = process_single_book(client, docx_path, idx)
+        book_nodes.append(book_node)
 
-        if branches:
-            prev_topic = branches[-1].get("title", prev_topic)
-            all_branches.extend(branches)
-
-    print("Központi gyökér-összefoglaló generálása...")
-    branch_titles = "\n".join(f"- {b['title']}" for b in all_branches)
+    print("\nKözponti egyesített gyökér-összefoglaló generálása...")
+    books_overview = "\n".join(f"- {b['title']}" for b in book_nodes)
     root_data = call_gemini_json(
         client,
         ROOT_SYSTEM_PROMPT,
-        f"A feldolgozott fő témakörök listája:\n{branch_titles}",
+        f"Az egyesített tudástárban szereplő kötetek:\n{books_overview}",
     )
 
-    tree = {
-        "title": root_data.get("title", "Bevezetés a Zohár könyvéhez"),
+    merged_tree = {
+        "title": root_data.get("title", "Zohár Tudástár – Átfogó Kezdőbarát Gondolattérkép"),
         "summary": root_data.get("summary", {}),
-        "children": all_branches,
+        "children": book_nodes,
     }
-    deduplicate_titles(tree, set())
+    deduplicate_titles(merged_tree, set())
 
     backup_existing_files()
     Path("zohar_summaries.json").write_text(
-        json.dumps(tree, ensure_ascii=False, indent=2),
+        json.dumps(merged_tree, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     Path("index.html").write_text(HTML_TEMPLATE, encoding="utf-8")
 
-    print(f"\nSIKER! A teljes 426 oldalas forrásból {count_nodes(tree)} részletes csomópont készült.")
+    print(f"\nSIKER! A {len(docx_files)} kötet egyesítéséből összesen {count_nodes(merged_tree)} részletes csomópont készült.")
     print("Frissített fájlok: zohar_summaries.json, index.html")
 
 
