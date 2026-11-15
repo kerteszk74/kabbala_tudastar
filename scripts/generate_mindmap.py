@@ -3,12 +3,37 @@
 import argparse
 import html
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 MARKMAP_URL = "https://cdn.jsdelivr.net/npm/markmap-autoloader@0.18.12/dist/index.js"
 VIEWER_TEMPLATE = Path(__file__).with_name("mindmap_viewer.html")
+
+
+def generate_ai_text(prompt: str, instruction: str) -> str:
+    """Generate text from an explicitly supplied prompt using the Gemini API."""
+    if not prompt.strip():
+        raise ValueError("Az AI-bemenet nem lehet ures.")
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("A GEMINI_API_KEY kornyezeti valtozo nincs beallitva.")
+    model = os.environ.get("GEMINI_MODEL", "gemini-4-carbon").strip()
+    if not model:
+        raise ValueError("A GEMINI_MODEL nem lehet ures.")
+    from google import genai
+    from google.genai import types
+
+    with genai.Client(api_key=api_key, vertexai=False) as client:
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=instruction),
+        )
+    if not response.text or not response.text.strip():
+        raise ValueError("A Gemini API nem adott vissza szoveget.")
+    return response.text
 
 
 def _literal(text: str) -> str:
@@ -85,11 +110,15 @@ def main() -> int:
     parser.add_argument("--html", type=Path, default=Path("output/mindmap.html"))
     parser.add_argument("--from-markdown", action="store_true",
                         help="A bemenet mar elkeszult Markdown-terkep.")
+    parser.add_argument("--ai-prompt",
+                        help="Kifejezetten az API-nak szant, nem erzekeny szoveg.")
     parser.add_argument("--summaries", type=Path,
                         help="JSON objektum: csomopont szovege -> osszefoglalo.")
     parser.add_argument("--force", action="store_true", help="Meglevo kimenetek felulirasa.")
     args = parser.parse_args()
     try:
+        if args.ai_prompt is not None and args.from_markdown:
+            raise ValueError("Az --ai-prompt es a --from-markdown nem hasznalhato egyutt.")
         source, markdown_path, html_path = (
             args.input.resolve(), args.markdown.resolve(), args.html.resolve()
         )
@@ -102,7 +131,14 @@ def main() -> int:
             for output in ([args.html] if reuse_source else [args.markdown, args.html]):
                 if output.exists():
                     raise FileExistsError(f"A kimenet mar letezik: {output}")
-        text = args.input.read_text(encoding="utf-8-sig")
+        if args.ai_prompt is not None:
+            text = generate_ai_text(
+                args.ai_prompt,
+                "Keszits magyar nyelvu gondolatterkep-vazlatot a megadott szovegbol. "
+                "Csak cimeket es behuzott listakat adj vissza.",
+            )
+        else:
+            text = args.input.read_text(encoding="utf-8-sig")
         markdown = text if args.from_markdown else build_markdown(text)
         if not markdown.strip():
             raise ValueError("A bemeneti szoveg ures.")
