@@ -113,6 +113,8 @@
     .card dl { margin: 0; }
     .card dt { margin-top: 10px; color: #775c2d; font-weight: 700; font-size: .87rem; }
     .card dt:first-child { margin-top: 0; }
+    .glossary dt { display: inline-block; padding: 3px 9px; border-radius: 8px; background: #f0e5cb; }
+    .glossary dd { padding: 8px 10px; border: 1px solid #ece0c8; border-radius: 9px; background: #fffdf8; }
     .pager { display: flex; justify-content: space-between; gap: 10px; margin-top: 19px; }
     .pager .control { flex: 1; }
     .page-position { color: #7b8b82; font-size: .75rem; text-align: center; margin: 10px 0 0; }
@@ -272,18 +274,59 @@
       const filters = document.querySelector("#volume-filters");
       const status = document.querySelector("#status");
       const glossary = [
-        ["Cimcum", /(?:^|[^\p{L}\p{N}])cimc[uú]m[\p{L}]*/iu, "Visszahúzódás: mint amikor valaki helyet készít a másiknak, hogy ő is kibontakozhasson."],
-        ["Keli", /(?:^|[^\p{L}\p{N}])keli[\p{L}]*/iu, "Edény: a befogadásra képes vágy, mint egy pohár, amelybe vizet lehet tölteni."],
-        ["Ór", /(?:^|[^\p{L}\p{N}])ór(?:t|nak|ral|ra|ban)?(?=$|[^\p{L}\p{N}])/iu, "Fény: a tanításban a kapott élet, öröm vagy beteljesülés képe, nem feltétlenül látható fény."],
-        ["Maszah", /(?:^|[^\p{L}\p{N}])masz(?:a|á)h[\p{L}]*/iu, "Szűrő vagy ernyő: segít megfontolni, hogyan és milyen szándékkal fogadunk be."],
-        ["Szefirák", /(?:^|[^\p{L}\p{N}])szefir[\p{L}]*/iu, "A fény megnyilvánulásának különböző minőségei, mint a fehér fény színei egy prizmában."],
-        ["Klipot", /(?:^|[^\p{L}\p{N}])klip[\p{L}]*/iu, "Héjak: olyan belső minták képe, amelyek eltakarhatják az önzetlen kapcsolódást."],
-        ["Partzufim", /(?:^|[^\p{L}\p{N}])(?:partzuf|parcuf)[\p{L}]*/iu, "Spirituális alakzatok: összekapcsolódó tulajdonságok együttesei, mint egy együttműködő csapat."],
-        ["Rózsa", /(?:^|[^\p{L}\p{N}])rózs[aá][\p{L}]*/iu, "A Zohár egyik jelképe: a szépséget és a védelmet együtt hordozó virág képe."],
-        ["Szulám", /(?:^|[^\p{L}\p{N}])szul[aá]m[\p{L}]*/iu, "Létra: a Zohárhoz írt magyarázat neve; a fokozatos megértés képét idézi."],
-        ["Ein Szof", /(?:^|[^\p{L}\p{N}])ein\s+szof[\p{L}]*/iu, "Végtelen: a kabbalában a határokon túli isteni teljesség megnevezése."],
-        ["Teremtő", /(?:^|[^\p{L}\p{N}])teremtő[\p{L}]*/iu, "A tanításokban a teremtés forrásának, illetve az adás és szeretet erejének megnevezése."]
+        ["Ein Szof", ["ein szof", "ein sof"], "A határtalan teremtő fény teljessége a korlátozás előtt; olyan, mint egy horizont nélküli óceán."],
+        ["Cimcum", ["cimcum", "cimcúm", "tzimtzum", "zimzum", "tsimtsum"], "Megszorítás: a vágy visszafogja a közvetlen élvezetet, hogy az adáshoz hasonlóvá válhasson; mint amikor várunk, mielőtt magunknak vennénk az egész süteményből."],
+        ["Keli", ["keli", "kelim"], "Edény: a befogadó vágy, amely érzékeli a fényt; mint egy pohár, amely képes befogadni a vizet."],
+        ["Ór", ["ór", "or"], "Fény: a Teremtőtől eredő élet, bölcsesség és az adás öröme; mint a napfény, amely életet ad a növénynek."],
+        ["Maszah", ["maszah", "masach", "masah", "maszach"], "Ellenző: belső szűrő, amely az önző befogadást visszaveri, és a szándék szerint engedi a fényt; mint egy szűrő, amely megválogatja, mi jut át."],
+        ["Ór Jasar", ["ór jasar", "or jasar", "or yashar", "or jaszar"], "Közvetlen fény: a Teremtőtől érkező adás és életerő; mint a közvetlenül ránk sütő napfény."],
+        ["Ór Hozer", ["ór hozer", "or hozer", "or chozer"], "Visszavert fény: az edény válasza és adakozó szándéka az ellenző révén; mint amikor egy tükröt a fény felé fordítunk."],
+        ["Aviut", ["aviut"], "A vágy vastagsága, ereje és mélysége, amely befolyásolja a feldolgozható fényt; mint egy tartály mérete a befogadható vízmennyiséget."],
+        ["Histavut ha-Cura", ["histavut ha cura", "hishtavut ha tzura", "hishtavut ha tsura", "histavut hacura", "hishtavut hatzura"], "A forma egyenlősége: a hasonló tulajdonságok szellemi közelséget teremtenek; mint amikor két ember közös értékei közelebb hozzák őket."],
+        ["Racon lekabel", ["racon lekabel", "ratzon lekabel", "ratson lekabel"], "A befogadás vágya: a teremtmény önmaga számára akar beteljesülést; mint amikor valaki először a saját éhségére figyel."],
+        ["Racon lehaspia", ["racon lehaspia", "ratzon lehashpia", "ratson lehashpia", "racon lehaspija"], "Az adás vágya: a mások felé forduló jó szándék; mint amikor valaki örömmel osztja meg az ebédjét."],
+        ["Kavaná", ["kavana", "kavanah", "kavanna"], "Szándék: a cselekedet mögötti belső irány; mint egy ajándék esetén az, hogy figyelemből vagy viszonzásért adjuk."],
+        ["Szefira / Szefirák", ["szefira", "sefira", "szefirot", "sefirot", "sefiroth", "szfira", "szfirot"], "A tíz szefira a fény megnyilvánulásának minőségeit jelöli; mint egy prizma, amely különböző színekre bontja a fényt."],
+        ["Keter", ["keter", "kesser"], "Korona: a legfelső szefira, az eredeti szándék gyökere; mint az építkezés előtt megszülető átfogó terv."],
+        ["Hohma / Chochma", ["hohma", "hochma", "chochma", "chokhma", "hochmah", "chochmah"], "Bölcsesség: az élet és az isteni bölcsesség fénye; mint egy hirtelen felismerés, amely megvilágít egy kérdést."],
+        ["Biná", ["bina", "binah"], "Megértés és adás, az anyai minőség a szefirák rendszerében; mint aki egy ötletet gondosan érlel és táplál."],
+        ["Heszed", ["heszed", "hesed", "chesed", "cheszed"], "Kegyelem és szerető jóság: nagylelkű adás; mint amikor kérés nélkül segítünk egy szomszédnak."],
+        ["Gvura", ["gvura", "gevura", "gevurah", "gvurah"], "Szigor és határhúzás: önfegyelem a vágyak irányításában; mint egy korlát, amely biztonságos úton tart."],
+        ["Tiferet", ["tiferet", "tifereth", "tiféret", "tiferesz"], "Harmónia: az adás és a szigor középső egyensúlya; mint a gondoskodás, amely egyszerre kedves és következetes."],
+        ["Necah", ["necah", "netzach", "netzah", "necach", "netsach"], "Állhatatosság és győzelem: kitartás a korrekció útján; mint amikor apró lépésekkel végigmegyünk egy hosszú úton."],
+        ["Hod", ["hod"], "Dicsőség és hála: alázat és elismerés; mint amikor megköszönjük mások segítségét egy közös sikerben."],
+        ["Jeszod", ["jeszod", "jesod", "yesod", "yeszod"], "Alap és közvetítő csatorna: összegyűjti a felső minőségeket és átadja a Malhutnak; mint egy vízvezeték a forrás és a kert között."],
+        ["Malhut / Malchut", ["malhut", "malchut", "malchuth", "malchus", "malhus"], "Királyság: a tizedik szefira, a teremtett befogadó vágy edénye; mint egy tál, amelybe a korábbi folyamatok eredménye kerül."],
+        ["Haszadim / Hasadim", ["haszadim", "hasadim", "chasadim", "chaszadim", "chasodim"], "Az irgalom fénye: az önzetlen adás védelmező minősége, amelyben a bölcsesség fénye befogadható; mint egy lámpabúra, amely elviselhetővé teszi az erős fényt."],
+        ["Partzuf / Parzufim", ["partzuf", "partzufim", "parcuf", "parcufim", "parzuf", "parzufim", "partsuf", "partsufim"], "Szellemi alakzat: tíz szefirából álló működő egység, fejjel és testtel; mint egy összehangolt feladatokat végző szervezet."],
+        ["Zeir Anpin", ["zeir anpin", "zeir anpín", "zair anpin", "zeir ampín"], "Kis Arc: a hat középső szefirát egyesítő férfi princípium, amely közvetít; mint egy híd két part között."],
+        ["Nukva", ["nukva", "nukvah", "nukba"], "Női princípium: a Malhut befogadó és kibontakoztató működése Zeir Anpin mellett; mint a termőföld, amelyben a mag fejlődésnek indul."],
+        ["Zivug", ["zivug", "zivugim", "zivug de hakaa"], "Szellemi egyesülés: a fény és az ellenzővel rendelkező edény találkozása; mint két együttműködő ember találkozásából születő új ötlet."],
+        ["Olamot", ["olamot", "olam", "olamoth", "olamim"], "Világok: a szellemi érzékelés és a szűrők egymásra épülő szintjei; mint egy épület egymást követő emeletei."],
+        ["Adam Kadmon", ["adam kadmon", "adam qadmon"], "Ősember: az elsődleges szellemi tervrajz, amelyből a későbbi világok kibontakoznak; mint egy ház alaprajza az építés előtt."],
+        ["Acilut / Atzilut", ["acilut", "atzilut", "atsilut", "atziluth"], "A közelség világa: a tiszta adás és egység szintje; mint amikor egy csapat minden tagja közös célt követ."],
+        ["Beria", ["beria", "beriah", "briya", "bria"], "A teremtés világa: a Binához kapcsolódó szint, ahol az önálló tudat megjelenik; mint amikor egy ötletből külön terv születik."],
+        ["Jecira", ["jecira", "yetzira", "jetsira", "jecirah", "yetzirah"], "A formálás világa: az érzelmi minőségek és a középső szefirák formálódásának szintje; mint amikor a terv alakot ölt."],
+        ["Aszija", ["aszija", "assija", "asiya", "assiyah", "asia", "asziah"], "A cselekvés világa: ahol a belső törvények tapasztalatban és tettben fejeződnek ki; mint amikor a tervből elkészül egy tárgy."],
+        ["Klipot / Klipa", ["klipot", "klipa", "klipah", "kelipot", "kelipa"], "Héjak: önző szándékok, amelyek elfedhetik a fényt; mint a dió kemény héja a belsejét."],
+        ["Szitra Ahra", ["szitra ahra", "sitra achra", "sitra ahra", "szitra achra"], "A Másik Oldal: az elkülönülés és önzés erőtere, amely ellenállásként jelenik meg; mint egy ellenáramlat, amelyben irányt kell választani."],
+        ["Tikkun", ["tikkun", "tikun", "tikkunim", "tikunim"], "Korrekció: az önző szándék fokozatos átalakítása összekapcsolóvá; mint egy elállítódott hangszer újrahangolása."],
+        ["Dvekut", ["dvekut", "dveikut", "devekut", "dvekuth"], "Ragaszkodás: belső összhang a Teremtő tulajdonságaival; mint amikor két ember ugyanarra a jó célra hangolódik."],
+        ["Arvut", ["arvut", "arvuth", "arevut"], "Kölcsönös kezesség: az emberek egymást támogatják a korrekcióban; mint egy kötélcsapat tagjai, akik biztosítják egymást."],
+        ["Nefes–Ruah–Nesama", ["nefes", "nefesh", "ruah", "ruach", "nesama", "neshama", "neshamah"], "A lélek egymásra épülő fokozatai a fény befogadásában; mint a tanulás lépcsői az első felismeréstől a mélyebb megértésig."],
+        ["Rózsa", ["rózsa"], "A Zohár egyik jelképe: mint maga a virág, egyszerre idézi fel a szépséget és a védelmet."],
+        ["Szulám", ["szulám", "sulam"], "Létra: a Zohárhoz írt magyarázat neve; mint egy létra, a fokozatos megértést segíti."],
+        ["Teremtő", ["teremtő"], "A tanításokban a teremtés forrásának és az adás erejének neve; mint egy forrás, amely vizet ad a pataknak."]
       ];
+
+      const glossarySuffix = "(?:(?:k|ok|ek|ak)?(?:ot|et|at|t|ban|ben|ba|be|val|vel|kal|kel|nak|nek|ra|re|rol|bol|hoz|hez|i|sag|seg|a|e)?)";
+      const glossaryPatterns = glossary.map(([, variants]) => variants.map(variant => {
+        const words = normalize(variant).split(/[\s-]+/);
+        const stem = words.map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+        const last = words[words.length - 1].slice(-1);
+        const assimilated = /[bcdfghjklmnpqrstvwxyz]/.test(last) ? `|${last}(?:al|el)` : "";
+        return new RegExp(`(?:^|[^\\p{L}\\p{N}])${stem}(?:${glossarySuffix}${assimilated})(?=$|[^\\p{L}\\p{N}])`, "u");
+      }));
 
       function escapeHtml(text) {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -363,8 +406,9 @@
       }
 
       function showGlossary(entry) {
-        const text = [entry.node.title, ...Object.values(entry.node.summary)].join(" ");
-        const matches = glossary.filter(([, pattern]) => pattern.test(text));
+        const text = normalize([entry.node.title, ...Object.values(entry.node.summary)].join(" "))
+          .replace(/[-\u2010-\u2015]/g, " ");
+        const matches = glossary.filter((_, index) => glossaryPatterns[index].some(pattern => pattern.test(text)));
         const list = document.querySelector("#glossary-terms");
         list.replaceChildren();
         for (const [term, , explanation] of matches) {

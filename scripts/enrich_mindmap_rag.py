@@ -30,6 +30,10 @@ INTERVAL = 3.5
 T = TypeVar("T")
 
 
+class MissingCitations(ValueError):
+    """No citation refers to a retrieved block."""
+
+
 def atomic_write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     name = None
@@ -122,9 +126,11 @@ class EnrichmentGemini(rag.Gemini):
         raise RuntimeError("Elfogytak az újrapróbálkozások.")
 
     def enrich(self, prompt: str, original: dict[str, str], records: list[rag.Record]) -> dict[str, str]:
-        def generate(model: str) -> dict[str, str]:
+        allowed = {record.id: record for record in records}
+
+        def generate(model: str, request_prompt: str) -> dict[str, str]:
             response = self.request(lambda: self.client.models.generate_content(
-                model=model, contents=prompt,
+                model=model, contents=request_prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     http_options=types.HttpOptions(timeout=rag.SYNTHESIS_TIMEOUT_MS),
@@ -141,33 +147,58 @@ class EnrichmentGemini(rag.Gemini):
                 not isinstance(result[key], str) or not result[key].strip() for key in FIELDS
             ):
                 raise ValueError("A modell válasza nem tartalmazza a három szövegmezőt.")
+            citations: list[str] = []
+            invalid: list[str] = []
+
+            def filter_citation(match: re.Match[str]) -> str:
+                identifier = match.group(1).strip()
+                if identifier in allowed:
+                    citations.append(identifier)
+                    return f"[{identifier}]"
+                invalid.append(identifier)
+                return ""
+
+            for key in FIELDS:
+                result[key] = re.sub(r"\[([^\[\]\r\n]*)\]", filter_citation, result[key]).strip()
+            if invalid:
+                print(f"Érvénytelen hivatkozások eltávolítva: {', '.join(invalid)}",
+                      file=sys.stderr, flush=True)
+            if not citations:
+                raise MissingCitations("Nincs érvényes blokkazonosítóra mutató forráshivatkozás.")
+            if any(not result[key] for key in FIELDS):
+                raise ValueError("A hivatkozások szűrése után egy magyarázó mező üres.")
             if sum(len(result[key].split()) for key in FIELDS) <= sum(
                 len(original[key].split()) for key in FIELDS
             ):
                 raise ValueError("A generált magyarázat nem hosszabb az eredetinél.")
-            citations = []
-            for key in FIELDS:
-                cited = [int(value) for value in re.findall(r"\[(\d+)\]", result[key])]
-                if not cited or any(value < 1 or value > len(records) for value in cited):
-                    raise ValueError(f"Hiányzó vagy érvénytelen forráshivatkozás: {key}")
-                citations.extend(cited)
             references = [
-                f"[{number}] {records[number - 1].metadata['volume']} – "
-                f"{records[number - 1].metadata['chapter']}"
-                for number in dict.fromkeys(citations)
+                f"[{identifier}] {allowed[identifier].metadata['volume']} – "
+                f"{allowed[identifier].metadata['chapter']}"
+                for identifier in dict.fromkeys(citations)
             ]
             result["connection"] += "\n\nForrások: " + "; ".join(references)
             return {key: result[key] for key in FIELDS}
 
-        try:
-            return generate(self.model)
-        except (errors.APIError, httpx.RequestError, ValueError) as exc:
-            print(f"Generálási hiba ({self.model}): {exc}", file=sys.stderr, flush=True)
-            if self.model != rag.DEFAULT_MODEL:
-                raise
-            print(f"Váltás: {rag.FALLBACK_MODEL}.", file=sys.stderr, flush=True)
-            self.model = rag.FALLBACK_MODEL
-            return generate(self.model)
+        request_prompt = prompt
+        for attempt in range(2):
+            try:
+                return generate(self.model, request_prompt)
+            except (errors.APIError, httpx.RequestError, ValueError) as exc:
+                print(f"Generálási hiba ({self.model}): {exc}", file=sys.stderr, flush=True)
+                if attempt == 1:
+                    raise
+                if isinstance(exc, MissingCitations):
+                    request_prompt += (
+                        "\n\nFIGYELMEZTETÉS: az előző válaszban nem volt érvényes hivatkozás. "
+                        "A válaszban legalább egyet használj pontosan a következők közül: "
+                        + ", ".join(f"[{identifier}]" for identifier in allowed)
+                        + ". Az intro és bevezeto nem forrásazonosító."
+                    )
+                elif self.model == rag.DEFAULT_MODEL:
+                    print(f"Váltás: {rag.FALLBACK_MODEL}.", file=sys.stderr, flush=True)
+                    self.model = rag.FALLBACK_MODEL
+                print("A csomópont generálásának újrapróbálása.", file=sys.stderr, flush=True)
+        raise RuntimeError("Elfogytak a generálási próbálkozások.")
 
 
 def retrieve_documents(
@@ -202,9 +233,10 @@ def retrieve_documents(
 
 def make_prompt(title: str, original: dict[str, str], records: list[rag.Record]) -> str:
     evidence = "\n\n".join(
-        f"[{index}] {record.metadata['volume']} – {record.metadata['chapter']}\n{record.text}"
-        for index, record in enumerate(records, 1)
+        f"[{record.id}] {record.metadata['volume']} – {record.metadata['chapter']}\n{record.text}"
+        for record in records
     )
+    identifiers = ", ".join(f"[{record.id}]" for record in records)
     return (
         "Gazdagítsd magyarul a gondolattérkép csomópontját kizárólag a megadott források alapján. "
         "A teljes új magyarázat legyen számottevően hosszabb az eredetinél. "
@@ -212,7 +244,9 @@ def make_prompt(title: str, original: dict[str, str], records: list[rag.Record])
         "Ha relevánsak, magyarázd hétköznapi hasonlattal a Maszah, Cimcum, Keli, Ór, "
         "Szefirák, Klipot, Partzufim, Aviut, Hasadim és Hohma fogalmakat. "
         "Ne találj ki tényeket vagy kapcsolatokat; az eredeti leírás csak keresési kiindulópont. "
-        "Mindhárom mezőben hivatkozz a felhasznált forrásokra [sorszám] alakban. "
+        f"A kizárólag használható forrásazonosítók: {identifiers}. "
+        "Hivatkozz a felhasznált forrásokra ezekkel a pontos, szögletes zárójeles azonosítókkal. "
+        "Az intro, bevezeto és más általános címkék nem forrásazonosítók; ne használd őket hivatkozásként. "
         "Csak JSON-objektumot adj vissza, kizárólag intro, inner_meaning, connection "
         "szöveges mezőkkel. Ne idézz hosszan.\n\n"
         f"Cím: {title}\nEredeti leírás: {json.dumps(original, ensure_ascii=False)}\n\n"
@@ -240,13 +274,14 @@ def load_index() -> tuple[Collection, list[str], str]:
 def process(
     source: Path, backup: Path, checkpoints: Path, collection: Collection,
     volumes: list[str], index_digest: str, gemini: EnrichmentGemini, limit: int | None,
-) -> None:
+) -> int:
     backup_once(source, backup)
     original_bytes = source.read_bytes()
     root = json.loads(original_bytes.decode("utf-8-sig"))
     nodes, tree_digest = nodes_and_structure(root)
     selected = nodes if limit is None else nodes[:limit]
     requested_model = gemini.model
+    failures = 0
     for index, node in enumerate(selected):
         title = node["title"]
         summary = node["summary"]
@@ -255,24 +290,35 @@ def process(
         identity = {"version": 1, "index": index, "title": title, "tree": tree_digest,
                     "database": index_digest, "model": requested_model}
         print(f"[{index + 1}/{len(nodes)}] {title}...", flush=True)
-        if path.exists():
-            checkpoint = json.loads(path.read_text(encoding="utf-8"))
-            if (not isinstance(checkpoint, dict) or checkpoint.get("identity") != identity
-                    or current not in (checkpoint.get("original"), checkpoint.get("enriched"))):
-                raise ValueError(f"Elavult vagy ütköző mentés: {path}. A fájlt kézzel kell ellenőrizni.")
-            enriched = checkpoint.get("enriched")
-            if not isinstance(enriched, dict) or set(enriched) != set(FIELDS) or any(
-                not isinstance(enriched[key], str) or not enriched[key].strip() for key in FIELDS
-            ):
-                raise ValueError(f"Hibás mentett magyarázat: {path}")
-            before = checkpoint["original"]
-            print("  Mentett eredmény felhasználása.", flush=True)
-        else:
-            records = retrieve_documents(collection, gemini, title, current, volumes)
-            enriched = gemini.enrich(make_prompt(title, current, records), current, records)
-            before = current
-            checkpoint = {"identity": identity, "original": current, "enriched": enriched}
-            atomic_write(path, json.dumps(checkpoint, ensure_ascii=False, indent=2).encode("utf-8"))
+        try:
+            if path.exists():
+                checkpoint = json.loads(path.read_text(encoding="utf-8"))
+                if (not isinstance(checkpoint, dict) or checkpoint.get("identity") != identity
+                        or current not in (checkpoint.get("original"), checkpoint.get("enriched"))):
+                    raise ValueError(f"Elavult vagy ütköző mentés: {path}. A fájlt kézzel kell ellenőrizni.")
+                enriched = checkpoint.get("enriched")
+                if not isinstance(enriched, dict) or set(enriched) != set(FIELDS) or any(
+                    not isinstance(enriched[key], str) or not enriched[key].strip() for key in FIELDS
+                ):
+                    raise ValueError(f"Hibás mentett magyarázat: {path}")
+                before = checkpoint["original"]
+                print("  Mentett eredmény felhasználása.", flush=True)
+            else:
+                records = retrieve_documents(collection, gemini, title, current, volumes)
+                enriched = gemini.enrich(make_prompt(title, current, records), current, records)
+                before = current
+                checkpoint = {"identity": identity, "original": current, "enriched": enriched}
+                atomic_write(path, json.dumps(checkpoint, ensure_ascii=False, indent=2).encode("utf-8"))
+        except (ValueError, errors.APIError, httpx.RequestError) as exc:
+            if limit is not None:
+                raise
+            failures += 1
+            message = f"Csomópont {index} ({title}): {type(exc).__name__}: {exc}"
+            print(f"Figyelmeztetés: {message}; az eredeti szöveg megmarad.", file=sys.stderr, flush=True)
+            error_log = backup.parent / "enrich_errors.log"
+            with error_log.open("a", encoding="utf-8") as handle:
+                handle.write(message.replace("\n", " ") + "\n")
+            continue
         if limit is not None:
             for key in FIELDS:
                 print(f"\n{key} – előtte:\n{before[key]}\n\n{key} – utána:\n{enriched[key]}\n",
@@ -284,6 +330,10 @@ def process(
         raise ValueError("A tudástár futás közben megváltozott; az eredmény nem lett felülírva.")
     atomic_write(source, (json.dumps(root, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     print(f"Mentve: {source}", flush=True)
+    if failures:
+        print(f"Kihagyott csomópontok: {failures}. Részletek: {backup.parent / 'enrich_errors.log'}",
+              file=sys.stderr, flush=True)
+    return failures
 
 
 def positive_int(value: str) -> int:
@@ -318,9 +368,9 @@ def main() -> int:
         options = types.HttpOptions(timeout=rag.REQUEST_TIMEOUT_MS,
                                     retry_options=types.HttpRetryOptions(attempts=1))
         with genai.Client(api_key=key, vertexai=False, http_options=options) as client:
-            process(rag.SUMMARIES, BACKUP, CHECKPOINTS, collection, volumes, index_digest,
-                    EnrichmentGemini(client, args.model.strip()), args.test)
-        return 0
+            failures = process(rag.SUMMARIES, BACKUP, CHECKPOINTS, collection, volumes, index_digest,
+                               EnrichmentGemini(client, args.model.strip()), args.test)
+        return 1 if failures else 0
     except (OSError, ValueError, errors.APIError, httpx.RequestError) as exc:
         print(f"Hiba: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
         return 1
