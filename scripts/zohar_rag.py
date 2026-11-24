@@ -16,12 +16,8 @@ from pathlib import Path
 import chromadb
 import httpx
 from chromadb.api.models.Collection import Collection
-from docx import Document
-from docx.oxml.ns import qn
-from docx.text.paragraph import Paragraph
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCES = ROOT / "sources"
 SUMMARIES = ROOT / "zohar_summaries.json"
 DB_PATH = ROOT / "cache" / "zohar_rag_db"
 ANSWER_PATH = ROOT / "cache" / "utolso_rag_valasz.md"
@@ -82,34 +78,31 @@ def word_chunks(text: str, size: int = 750, overlap: int = 150) -> list[str]:
     return chunks
 
 
-def document_records(path: Path) -> list[Record]:
-    doc = Document(path)
-    chapter = "Cím nélküli bevezető"
-    paragraphs: list[str] = []
-    records: list[Record] = []
+def book_records() -> list[Record]:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from build_zohar_tudastar import BOOK, parse_book
 
-    def flush() -> None:
-        metadata = {"kind": "document", "volume": path.name, "chapter": chapter}
-        for chunk in word_chunks("\n".join(paragraphs)):
-            records.append(make_record(chunk, metadata, len(records)))
-        paragraphs.clear()
-
-    # Iterating XML also includes paragraphs inside tables in document order.
-    for element in doc.element.body.iter(qn("w:p")):
-        paragraph = Paragraph(element, doc)
-        text = paragraph.text.strip()
-        if not text:
-            continue
-        style = paragraph.style
-        style_name = style.name.lower() if style is not None else ""
-        if style_name.startswith(("heading ", "címsor ", "myheading", "chapter")):
-            flush()
-            chapter = text
-        else:
-            paragraphs.append(text)
-    flush()
-    if not records:
-        raise ValueError(f"A dokumentumban nincs indexelhető szöveg: {path.name}")
+    chapters, points, bodies = parse_book(BOOK.read_text(encoding="utf-8"))
+    by_id = {chapter["id"]: chapter for chapter in chapters}
+    records = []
+    for point in points:
+        chapter = by_id[point["chapter_id"]]
+        metadata = {
+            "kind": "document", "volume": f"{chapter['volume']}. kötet",
+            "chapter": (
+                f"{chapter['title']}; {point['number']}. pont "
+                f"({point['occurrence']}. előfordulás); {chapter['source_url']}"
+            ),
+        }
+        records.append(make_record(point["text"], metadata, len(records)))
+    for chapter in chapters:
+        if chapter["point_count"] == 0:
+            metadata = {
+                "kind": "document", "volume": f"{chapter['volume']}. kötet",
+                "chapter": f"{chapter['title']}; nem számozott szöveg; {chapter['source_url']}",
+            }
+            records.append(make_record(bodies[chapter["id"]]["preamble"], metadata, len(records)))
     return records
 
 
@@ -156,6 +149,9 @@ def query_terms(text: str) -> list[str]:
 
 class LocalSearch:
     def __init__(self, collection: Collection) -> None:
+        metadata = collection.metadata or {}
+        if metadata.get("corpus_version") != 2 or metadata.get("status") != "ready":
+            raise ValueError("A régi dokumentumindex nem használható; futtasd újra az --index parancsot.")
         result = collection.get(include=["documents", "metadatas"])
         documents, metadatas = result["documents"], result["metadatas"]
         if (documents is None or metadatas is None
@@ -273,11 +269,7 @@ def local_vectors(texts: list[str]) -> list[list[float]]:
 
 
 def index_sources(db: chromadb.ClientAPI) -> None:
-    paths = sorted((p for p in SOURCES.glob("*.docx") if not p.name.startswith("~$")),
-                   key=lambda p: p.name.casefold())
-    if len(paths) != 4:
-        raise ValueError(f"Pontosan 4 DOCX-kötet szükséges; megtalálva: {len(paths)}.")
-    records = [record for path in paths for record in document_records(path)]
+    records = book_records()
     records.extend(summary_records(SUMMARIES))
     collection = db.get_or_create_collection(
         name=COLLECTION, embedding_function=None,
@@ -302,7 +294,8 @@ def index_sources(db: chromadb.ClientAPI) -> None:
     for offset in range(0, len(stale), 1000):
         collection.delete(ids=stale[offset:offset + 1000])
     collection.modify(metadata={"embedding_model": EMBEDDING_MODEL, "status": "ready",
-                                "volumes": json.dumps([p.name for p in paths], ensure_ascii=False)})
+                                "corpus_version": 2,
+                                "volumes": json.dumps([f"{number}. kötet" for number in range(1, 14)], ensure_ascii=False)})
     print("Az index elkészült.")
 
 
@@ -311,7 +304,7 @@ def answer_question(collection: Collection, generator: Ollama, question: str) ->
     if metadata.get("status") != "ready":
         raise ValueError("Az index hiányos vagy nem kompatibilis; futtasd újra az --index parancsot.")
     volumes = json.loads(str(metadata.get("volumes", "[]")))
-    if not isinstance(volumes, list) or len(volumes) != 4 or any(
+    if not isinstance(volumes, list) or len(volumes) != 13 or any(
         not isinstance(volume, str) for volume in volumes
     ):
         raise ValueError("Az index kötetlistája hibás; futtasd újra az --index parancsot.")

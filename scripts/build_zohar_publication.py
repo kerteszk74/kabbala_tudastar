@@ -66,17 +66,9 @@ def build_publication(markdown: str, summaries: dict[str, str]) -> str:
 
 
 def main() -> None:
-    markdown = MARKDOWN.read_text(encoding="utf-8")
-    raw = SUMMARIES.read_text(encoding="utf-8-sig")
-    summaries = json.loads(raw)
-    document = build_publication(markdown, summaries)
-    DESTINATION.mkdir(exist_ok=True)
-    for path in (DESTINATION / "index.html", DESTINATION / "zohar_summaries.json"):
-        if path.exists():
-            raise FileExistsError(f"A kimenet mar letezik: {path}")
-    (DESTINATION / "index.html").write_text(document, encoding="utf-8")
-    (DESTINATION / "zohar_summaries.json").write_text(raw, encoding="utf-8")
-    print(f"Elkeszult: {DESTINATION}")
+    from build_zohar_tudastar import build
+
+    build()
 
 
 if __name__ == "__main__":

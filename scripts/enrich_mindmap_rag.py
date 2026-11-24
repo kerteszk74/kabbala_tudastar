@@ -296,7 +296,7 @@ def make_prompt(title: str, original: dict[str, str], records: list[rag.Record])
         "Gazdagítsd magyarul a gondolattérkép csomópontját kizárólag a megadott források alapján. "
         "TILOS az eredeti szöveg mondatait szó szerint vagy kissé átfogalmazva megismételni! "
         "Az eredeti összefoglaló már szerepel az oldalon; a te feladatod KIZÁRÓLAG az, "
-        "hogy a mellékelt 6 Zohár-forrásrészletből (Zohár_1..4.docx) olyan új "
+        "hogy a teljes, 13 kötetes Zohár mellékelt, pontosan azonosított forrásrészleteiből olyan új "
         "kabbalisztikus összefüggéseket, Szefira-kapcsolatokat, héber/arámi fogalmakat "
         "és lelki munkára vonatkozó magyarázatokat emelj ki, amelyek az eredeti szövegben "
         "még NEM szerepeltek. Írj 3 tömör, tartalmas, hibátlan magyarságú bekezdést "

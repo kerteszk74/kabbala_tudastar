@@ -1,0 +1,11 @@
+# Keep runtime asset bytes consistent with the published SHA-256 manifest.
+/index.html text eol=lf
+/zohar_summaries.json text eol=lf
+/assets/*.js text eol=lf
+/data/*.json text eol=lf
+/web_assets_manifest.json text eol=lf
+/docs/index.html text eol=lf
+/docs/zohar_summaries.json text eol=lf
+/docs/assets/*.js text eol=lf
+/docs/data/*.json text eol=lf
+/docs/web_assets_manifest.json text eol=lf
